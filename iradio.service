@@ -1,0 +1,37 @@
+# ********************************************************************
+# systemd service fuer IRadio
+# ===========================
+#      Uwe Berger; 2024
+#
+# Ort: /etc/systemd/system/iradio.service
+#
+#
+# sudo systemctl enable iradio.service
+# sudo systemctl start iradio
+# ...
+# 
+#
+# sudo systemctl daemon-reload
+# ...
+#
+# ********************************************************************
+
+[Unit]
+Description=IRadio
+After=multi-user.target
+
+# StartLimitIntervalSec=500
+# StartLimitBurst=5
+
+
+[Service]
+Type=simple
+
+# Restart=on-failure
+Restart=always
+RestartSec=5s
+
+ExecStart=/home/pi/work/IRadio/iradio.py
+
+[Install]
+WantedBy=multi-user.target
