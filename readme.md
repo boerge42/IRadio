@@ -26,9 +26,9 @@ Hier einige Bildschirminhalte in unterschiedlichen Situationen:
 <img src="pictures/station-list.png" width="200"/>
 <img src="pictures/volume.png" width="200"/>
 
-Achso, dieses Projekt verwendet eine, wenn im entsprechenden Verzeichnispfad vorhandene (siehe Quelltext :-)), Stationslisten-Datenbank, welche ich bereits in einem meiner anderen [Projekte](https://github.com/boerge42/pyIRadio) verwendet hatte! Mit dem dort aufgeführten Python-Script *import_stations.py* und der Bedienoberfläche *pyiradio.py* kann die Datenbank erzeugt und/oder konfiguriert werden. Ist das sqlite3-DB-File nicht vorhanden, werden Default-Stationen, welche im Quelltext definiert sind, verwendet.
+Achso, dieses Projekt verwendet eine, wenn im entsprechenden Verzeichnispfad vorhandene Stationslisten-Datenbank (siehe Quelltext), welche ich bereits in einem meiner anderen [Projekte](https://github.com/boerge42/pyIRadio) verwendet hatte! Mit dem dort aufgeführten Python-Script *import_stations.py* und der Bedienoberfläche *pyiradio.py* kann die Datenbank erzeugt und/oder konfiguriert werden. Ist das entsprechende sqlite3-DB-File nicht vorhanden, werden Default-Stationen, welche im Quelltext definiert sind, verwendet.
 
-Um "IRadio" automatisch beim Hochlauf des Raspberry zu starten, könnte man dies durch systemd erledigen lassen. Eine entsprechende Konfigurationsdatei ist im Repository enthalten.
+Um "IRadio" automatisch beim Hochlauf des Raspberry Pi zu starten, könnte man dies durch systemd erledigen lassen. Eine entsprechende Konfigurationsdatei ist im Repository enthalten.
 
 
 
