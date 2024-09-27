@@ -44,7 +44,7 @@ Lautstärke:
 
 <img src="pictures/volume.png" width="200"/>
 
-Achso, dieses Projekt verwendet eine, wenn im entsprechenden Verzeichnispfad vorhandene (siehe [Quelltext](https://github.com/boerge42/IRadio/blob/main/iradio.py)), Stationslisten-Datenbank, welche ich bereits in einem meiner anderen [Projekte](https://github.com/boerge42/pyIRadio) verwendet hatte! Mit dem dort aufgeführten Python-Script *import_stations.py* und der Bedienoberfläche *pyiradio.py* kann die Datenbank erzeugt und/oder konfiguriert werden. Ist das sqlite3-DB-File nicht vorhanden, werden Default-Stationen, welche im [Quelltext](https://github.com/boerge42/IRadio/blob/main/iradio.py) definiert sind, verwendet.
+Ach so, dieses Projekt verwendet eine, wenn am entsprechenden [Ort](https://github.com/boerge42/IRadio/blob/main/iradio.py#L235) vorhandene sqlite3-Datenbank, welche ich bereits in einem meiner anderen [Projekte](https://github.com/boerge42/pyIRadio) verwendet hatte! Mit dem dort aufgeführten Python-Script [import_stations.py](https://github.com/boerge42/pyIRadio/blob/main/import_stations.py) und der Bedienoberfläche *pyiradio.py* kann die Datenbank erzeugt und/oder konfiguriert werden. Ist das sqlite3-DB-File nicht vorhanden, werden Default-Stationen, welche im [Quelltext](https://github.com/boerge42/IRadio/blob/main/iradio.py#L185) definiert sind, verwendet.
 
 Um "IRadio" automatisch beim Hochlauf des Raspberry zu starten, könnte man dies durch systemd erledigen lassen. Eine entsprechende [Konfigurationsdatei](https://github.com/boerge42/IRadio/blob/main/iradio.service) ist im Repository enthalten.
 
