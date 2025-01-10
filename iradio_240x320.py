@@ -3,10 +3,12 @@
 #
 # Internetradio mit einem Raspberry Pi und aufgefuehrter Hardware
 # ***************************************************************
-#                    Uwe Berger; 2024
+#                    Uwe Berger; 2025
 #
-# ==> optimiert fuer eine Bildschirmaufloesung von 128x160 Pixel
-#     (und einen ST7735-TFT-Display-Controller) 
+#
+# ==> optimiert fuer eine Bildschirmaufloesung von 240x320 Pixel
+#     (und einen ILI9341-TFT-Display-Controller) 
+#
 #
 # Hardware (Raspberry-Pin-Belegung in BCM; insgesamt)
 # ===================================================
@@ -38,8 +40,8 @@
 # BUTTON    17 (optional)
 # GND, 5V
 #
-# TFT (ST7735, analog dockerpi...)
-# --------------
+# TFT (ST7735, analog dockerpi...; 128x160)
+# -----------------------------------------
 # SCK   11 (CLK)
 # SDA   10 (MISO)
 # RES   24
@@ -47,6 +49,19 @@
 # CS    08 (CE0)
 # LEDA  3.3V            <-- eventuell via PWM (Helligkeit)?
 # GND, 5V
+#
+# ...oder...
+#
+# TFT (ILI9341; DollaTek 2.8 Zoll LCD-Bildschirm TFT LCD SPI-Modul; 240x320)
+# --------------------------------------------------------------------------
+# GND   entspr.
+# VCC   entspr.
+# CLK   11 (CLK)
+# MOSI  10 (MOSI)
+# RES   24
+# DC    23
+# BLK   nicht angeschl.
+# MISO  nicht angeschl.
 #
 #
 # Bedienungelemente/-funktionen
@@ -106,8 +121,8 @@
 #    } 
 #
 #
-# notwendige Python-Module
-# ========================
+# notwendige Python-Module (* --> je nach vorliegender Hardware!)
+# ===========================================================
 # 
 # moeglichst fehlende Python-Module via apt installieren,
 # damit sie systemweit zur Verfuegung stehen; z.B.:
@@ -115,8 +130,15 @@
 #
 # ansonsten via pip installieren:
 #  pip install --break-system-packages textwrapper
-#  pip install --break-system-packages st7735
+#  (*) pip install --break-system-packages st7735
 #  pip install --break-system-packages gpiodevice
+#  (*) pip install --break-system-packages Adafruit_GPIO
+#
+# und von Hand (*):
+#   cd ~
+#   git clone https://github.com/adafruit/Adafruit_Python_ILI9341.git
+#   cd Adafruit_Python_ILI9341
+#   sudo python setup.py install
 #
 #
 # ToDo:
@@ -126,7 +148,7 @@
 # * anderes Default-Logo?
 # * haben wir ein Problem, wenn weniger Stationen vorhanden sind als 
 #   als der Index in den Settings adressiert...?
-# * ein Gehauuse :-)
+# * ein Gehaeuse :-)
 #
 #
 # ---------
@@ -141,7 +163,12 @@ from PIL import ImageDraw
 from PIL import ImageFont
 from PIL import ImageColor
 
+# je nach Display-Controller ;-)
 import st7735
+import Adafruit_ILI9341 as TFT
+
+# wg. Adafruit_ILI9341
+import Adafruit_GPIO.SPI as SPI
 
 import time
 from time import sleep
@@ -210,7 +237,7 @@ config = {
 }
 
 # Anzahl sichtbare Stationen in Stationsauswahlliste
-STATION_LIST_MAX_COUNT = 6
+STATION_LIST_MAX_COUNT = 16
 
 # temporaere Werte
 temps = {
@@ -243,17 +270,20 @@ SETTINGS_FILE   = F"{SCRIPT_PATH}/iradio.json"
 COLOR_TEXT_NORMAL                   = 0xffffff
 COLOR_BACKGROUND_NORMAL             = 0x000000
 
-COLOR_BACKGROUND_CLOCK_BAR          = 0x2f4f4f
+COLOR_BACKGROUND_CLOCK_BAR          = 0x4f4f2f
 COLOR_TEXT_CLOCK_BAR                = 0xffffff
 
 COLOR_BACKGROUND_WINDOW             = 0x000000
-COLOR_FRAME_WINDOW                  = 0x2f4f4f
-COLOR_BACKGROUND_LABEL_WINDOW       = 0x2f4f4f
+COLOR_FRAME_WINDOW                  = 0x4f4f2f
+COLOR_BACKGROUND_LABEL_WINDOW       = 0x4f4f2f
 COLOR_TEXT_LABEL_WINDOW             = 0xffffff
 COLOR_VOLUME_BAR                    = 0x0000ff
 COLOR_TEXT_WINDOW                   = 0xffffff
 COLOR_TEXT_SELECTED_STATION         = 0x000000
 COLOR_BACKGROUND_SELECTED_STATION   = 0xffffff
+
+COLOR_BACKGROUND_TOPIC              = 0x000000
+COLOR_TEXT_TOPIC                    = 0x00ff00
 
 
 # ******************************************************************
@@ -364,13 +394,16 @@ def load_webimage(url, dx, dy, logo_name, cache_path, default_logo):
     # Groesse des Logo entsprechend (dx, dy) anpassen 
     im_x = im.width
     im_y = im.height
-    if im_x != dx:
-        im_y = round(im_y * dx/im_x)
-        im_x = dx
-    if im_y != dy:
-        im_x = round(im_x * dy/im_y)
-        im_y = dy
-    im = im.resize((im_x, im_y), Image.LANCZOS)
+    # Logo groesser als der zur Verfuegung stehende Platz? --> dann resize
+    if ((im_x > dx)|(im_y > dy)):
+        #print(im_x, im_y, dx, dy)
+        if im_x != dx:
+            im_y = round(im_y * dx/im_x)
+            im_x = dx
+        if im_y != dy:
+            im_x = round(im_x * dy/im_y)
+            im_y = dy
+        im = im.resize((im_x, im_y), Image.LANCZOS)
     # irgendetwas stimmt nicht mit den Farben!?!?! ...dehalb erstmal Graustufen...
     return im.convert("L") # ??? --> https://pillow.readthedocs.io/en/stable/handbook/concepts.html#concept-modes
 
@@ -518,18 +551,22 @@ def encoder_setup():
  
 # ***********************************************************************************************
 def tft_setup(): 
-    global disp, draw, font, font_b, font_20, font_20_b,img, WIDTH, HEIGHT
-    disp = st7735.ST7735(port=0, cs=0, dc=23, rst=24, width=128, height=160, rotation=0, offset_left=0, offset_top=0, invert=False)
+    global disp, draw, font, font_b, font_big, font_big_b,img, WIDTH, HEIGHT
+    
+    # wir haben was fuer einen Display-Controller???? 
+    # ~ disp = st7735.ST7735(port=0, cs=0, dc=23, rst=24, width=128, height=160, rotation=0, offset_left=0, offset_top=0, invert=False)
+    disp = TFT.ILI9341(23, rst=24, spi=SPI.SpiDev(0, 0, max_speed_hz=64000000))
+    
     disp.begin()
     WIDTH = disp.width
     HEIGHT = disp.height
     img = Image.new('RGB', (WIDTH, HEIGHT))
     draw = ImageDraw.Draw(img)
     draw.fontmode = "L"   
-    font = ImageFont.truetype(FONT_NORMAL, size=11)
-    font_b = ImageFont.truetype(FONT_BOLD, size=11)
-    font_20 = ImageFont.truetype(FONT_NORMAL, size=20)
-    font_20_b = ImageFont.truetype(FONT_BOLD, size=20)
+    font = ImageFont.truetype(FONT_NORMAL, size=14)
+    font_b = ImageFont.truetype(FONT_BOLD, size=14)
+    font_big = ImageFont.truetype(FONT_NORMAL, size=40)
+    font_big_b = ImageFont.truetype(FONT_BOLD, size=40)
 
 # ***********************************************************************************************
 def tft_display_main(): 
@@ -537,104 +574,156 @@ def tft_display_main():
     draw.rectangle((0, 0, WIDTH, HEIGHT), outline=COLOR_BACKGROUND_NORMAL, fill=COLOR_BACKGROUND_NORMAL)
     # Datum/Uhrzeit auf jedem Screen
     now = datetime.now()
-    date_time = now.strftime("%a; %d.%m.%y; %H:%M")
-    draw.rectangle((0, 0, WIDTH, 14), outline=COLOR_BACKGROUND_CLOCK_BAR, fill=COLOR_BACKGROUND_CLOCK_BAR)
+    date_time = now.strftime("%A; %d.%m.%y; %H:%M")
+    a, b, c, y = draw.textbbox((0, 0), date_time, font=font, language="de-DE")
+    draw.rectangle((0, 0, WIDTH, y), outline=COLOR_BACKGROUND_CLOCK_BAR, fill=COLOR_BACKGROUND_CLOCK_BAR)
     draw.text(((WIDTH-draw.textlength(date_time, font=font))/2, 0), date_time,  font=font, fill=COLOR_TEXT_CLOCK_BAR)
-    # ~ draw.line([(0, 14), (WIDTH, 14)], fill=(255, 255, 255))
+
+    y = y + 20
+
+    # Stationsname
+    a, b, c, dy = draw.textbbox((0, 0), "Abcg", font=font_b, language="de-DE")
+    for line in textwrap.wrap(stations[config['station_idx']]['name'], 30):
+        draw.text(((WIDTH-draw.textlength(line, font=font_b))/2, y), line,  font=font_b, fill=COLOR_TEXT_NORMAL)
+        y = y + dy
+    y = y + 5
 
     # entsprechenden Screen anzeigen
     if (temps["main_screen_idx"] == 0):
-        # Stationsname und Logo
-        y = 20
-        for line in textwrap.wrap(stations[config['station_idx']]['name'], 15):
-            draw.text(((WIDTH-draw.textlength(line, font=font_b))/2, y), line,  font=font_b, fill=COLOR_TEXT_NORMAL)
-            y = y +15
-        y = y + 5
-        logo_img = load_webimage(stations[config['station_idx']]['favicon'], 90, HEIGHT-y, stations[config['station_idx']]['name'], PATH_LOGO_CACHE, DEFAULT_LOGO)
-        img.paste(logo_img, (int((WIDTH-logo_img.width)/2), int(HEIGHT-logo_img.height)))
+        # Logo
+        logo_img = load_webimage(stations[config['station_idx']]['favicon'], WIDTH, HEIGHT-y, stations[config['station_idx']]['name'], PATH_LOGO_CACHE, DEFAULT_LOGO)
+        img.paste(logo_img, (int((WIDTH-logo_img.width)/2), int(HEIGHT-(HEIGHT-y)/2-logo_img.height/2)))
         
     elif (temps["main_screen_idx"] == 1):
         # Media-Infos aus Stream
+        a, b, c, dy = draw.textbbox((0, 0), "Abcg", font=font, language="de-DE")
+        y = y + 10
         try:
-            y = 20
-            for line in textwrap.wrap(media.get_meta(Meta.NowPlaying), 18):
-                draw.text((5, y), line, font=font, fill=COLOR_TEXT_NORMAL)
-                y = y + 15
-            y = y + 5
+            txt = "Meta.NowPlaying:"
+            draw.rectangle((draw.textbbox((0, y), txt, font=font, language="de-DE")), outline=COLOR_BACKGROUND_TOPIC, fill=COLOR_BACKGROUND_TOPIC)
+            draw.text((0, y), txt,  font=font, fill=COLOR_TEXT_TOPIC)            
+            y = y + dy
+            for line in textwrap.wrap(media.get_meta(Meta.NowPlaying), 30):
+                draw.text((0, y), line, font=font, fill=COLOR_TEXT_NORMAL)
+                y = y + dy
+            y = y + 10
         except:
             pass
         try:
-            for line in textwrap.wrap(media.get_meta(Meta.Title), 18):
-                draw.text((5, y), line, font=font, fill=COLOR_TEXT_NORMAL)
-                y = y + 15
-            y = y + 5
+            txt = "Meta.Title:"
+            draw.rectangle((draw.textbbox((0, y), txt, font=font, language="de-DE")), outline=COLOR_BACKGROUND_TOPIC, fill=COLOR_BACKGROUND_TOPIC)
+            draw.text((0, y), txt,  font=font, fill=COLOR_TEXT_TOPIC)            
+            y = y + dy
+            for line in textwrap.wrap(media.get_meta(Meta.Title), 30):
+                draw.text((0, y), line, font=font, fill=COLOR_TEXT_NORMAL)
+                y = y + dy
+            y = y + 10
         except:
             pass
         try:
-            for line in textwrap.wrap(media.get_meta(Meta.Genre), 18):
-                draw.text((5, y), line, font=font, fill=COLOR_TEXT_NORMAL)
-                y = y + 15
+            txt = "Meta.Genre:"
+            draw.rectangle((draw.textbbox((0, y), txt, font=font, language="de-DE")), outline=COLOR_BACKGROUND_TOPIC, fill=COLOR_BACKGROUND_TOPIC)
+            draw.text((0, y), txt,  font=font, fill=COLOR_TEXT_TOPIC)            
+            y = y + dy
+            for line in textwrap.wrap(media.get_meta(Meta.Genre), 30):
+                draw.text((0, y), line, font=font, fill=COLOR_TEXT_NORMAL)
+                y = y + dy
         except:
             pass
 
     elif (temps["main_screen_idx"] == 2):
         # Infos aus Stations-DB
-        y = 20
-        for line in textwrap.wrap(stations[config['station_idx']]['name'], 15):
-            draw.text(((WIDTH-draw.textlength(line, font=font_b))/2, y), line,  font=font_b, fill=COLOR_TEXT_NORMAL)
-            y = y + 15
-        y = y + 5
+        a, b, c, dy = draw.textbbox((0, 0), "Abcg", font=font, language="de-DE")
+        y = y + 10
         try:
             if len(stations[config['station_idx']]['country']) > 0:
-                draw.text((5, y), stations[config['station_idx']]['country'][0:20],  font=font, fill=COLOR_TEXT_NORMAL)
-                y = y + 15
+                txt = "DB.country:"
+                draw.rectangle((draw.textbbox((0, y), txt, font=font, language="de-DE")), outline=COLOR_BACKGROUND_TOPIC, fill=COLOR_BACKGROUND_TOPIC)
+                draw.text((0, y), txt,  font=font, fill=COLOR_TEXT_TOPIC)            
+                y = y + dy
+                draw.text((0, y), stations[config['station_idx']]['country'][0:20],  font=font, fill=COLOR_TEXT_NORMAL)
+                y = y + dy +10
             if len(stations[config['station_idx']]['state']) > 0:
-                draw.text((5, y), stations[config['station_idx']]['state'][0:20],  font=font, fill=COLOR_TEXT_NORMAL)
-                y = y + 15
+                txt = "DB.state:"
+                draw.rectangle((draw.textbbox((0, y), txt, font=font, language="de-DE")), outline=COLOR_BACKGROUND_TOPIC, fill=COLOR_BACKGROUND_TOPIC)
+                draw.text((0, y), txt,  font=font, fill=COLOR_TEXT_TOPIC)            
+                y = y + dy
+                draw.text((0, y), stations[config['station_idx']]['state'][0:20],  font=font, fill=COLOR_TEXT_NORMAL)
+                y = y + dy + 10
             if len(stations[config['station_idx']]['language']) > 0:
-                draw.text((5, y), stations[config['station_idx']]['language'][0:20],  font=font, fill=COLOR_TEXT_NORMAL)
-                y = y + 15
+                txt = "DB.language:"
+                draw.rectangle((draw.textbbox((0, y), txt, font=font, language="de-DE")), outline=COLOR_BACKGROUND_TOPIC, fill=COLOR_BACKGROUND_TOPIC)
+                draw.text((0, y), txt,  font=font, fill=COLOR_TEXT_TOPIC)            
+                y = y + dy
+                draw.text((0, y), stations[config['station_idx']]['language'][0:20],  font=font, fill=COLOR_TEXT_NORMAL)
+                y = y + dy + 10
             if len(stations[config['station_idx']]['codec']) > 0:
-                draw.text((5, y), stations[config['station_idx']]['codec'],  font=font, fill=COLOR_TEXT_NORMAL)
-                y = y + 15
-            draw.text((5, y), F"{stations[config['station_idx']]['bitrate']}Kb/s",  font=font, fill=COLOR_TEXT_NORMAL)
+                txt = "DB.codec:"
+                draw.rectangle((draw.textbbox((0, y), txt, font=font, language="de-DE")), outline=COLOR_BACKGROUND_TOPIC, fill=COLOR_BACKGROUND_TOPIC)
+                draw.text((0, y), txt,  font=font, fill=COLOR_TEXT_TOPIC)            
+                y = y + dy
+                draw.text((0, y), stations[config['station_idx']]['codec'],  font=font, fill=COLOR_TEXT_NORMAL)
+                y = y + dy + 10
+            txt = "DB.bitrate:"
+            draw.rectangle((draw.textbbox((0, y), txt, font=font, language="de-DE")), outline=COLOR_BACKGROUND_TOPIC, fill=COLOR_BACKGROUND_TOPIC)
+            draw.text((0, y), txt,  font=font, fill=COLOR_TEXT_TOPIC)            
+            y = y + dy
+            draw.text((0, y), F"{stations[config['station_idx']]['bitrate']}Kb/s",  font=font, fill=COLOR_TEXT_NORMAL)
         except:
-            draw.text((5, y), "no database...",  font=font, fill=COLOR_TEXT_NORMAL)
+            draw.text((0, y), "no database...",  font=font, fill=COLOR_TEXT_NORMAL)
 
     elif (temps["main_screen_idx"] == 3):
         # dies und das
-        draw.text((15, 30), "techn. Zeugs...",  font=font, fill=(255, 255, 255))
-        draw.text((15, 50), f"station_idx = {config['station_idx']}",  font=font, fill=COLOR_TEXT_NORMAL)
-        draw.text((15, 65), f"temp_st_idx = {temps['station_list_idx']}",  font=font, fill=COLOR_TEXT_NORMAL)
-        draw.text((15, 80), f"volume = {config['volume']}",  font=font, fill=COLOR_TEXT_NORMAL)
-        draw.text((15, 95), f"main_screen = {temps['main_screen_idx']}",  font=font, fill=COLOR_TEXT_NORMAL)
+        a, b, c, dy = draw.textbbox((0, 0), "Abcg", font=font, language="de-DE")
+        y = y + 10
+        txt = "technical stuff:"
+        draw.rectangle((draw.textbbox((0, y), txt, font=font, language="de-DE")), outline=COLOR_BACKGROUND_TOPIC, fill=COLOR_BACKGROUND_TOPIC)
+        draw.text((0, y), txt,  font=font, fill=COLOR_TEXT_TOPIC)            
+        y = y + dy
+        draw.text((0, y), f"station_idx = {config['station_idx']}",  font=font, fill=COLOR_TEXT_NORMAL)
+        y = y + dy
+        draw.text((0, y), f"temp_st_idx = {temps['station_list_idx']}",  font=font, fill=COLOR_TEXT_NORMAL)
+        y = y + dy
+        draw.text((0, y), f"volume = {config['volume']}",  font=font, fill=COLOR_TEXT_NORMAL)
+        y = y + dy
+        draw.text((0, y), f"main_screen = {temps['main_screen_idx']}",  font=font, fill=COLOR_TEXT_NORMAL)
 
     disp.display(img)
 
-# ***********************************************************************************************
+# ******* ok ****************************************************************************************
 def tft_display_app_off(): 
+    dy_space = 6
     #Bildschirm loeschen
     draw.rectangle((0, 0, WIDTH, HEIGHT), outline=COLOR_BACKGROUND_NORMAL, fill=COLOR_BACKGROUND_NORMAL)
     # Datum/Uhrzeit anzeigen
     now = datetime.now()
-    date = now.strftime("%a, %d.%m.%Y")
-    draw.text(((WIDTH-draw.textlength(date, font=font))/2, 60), date,  font=font, fill=COLOR_TEXT_NORMAL)
+    date = now.strftime("%A, %d.%m.%Y")
     time = now.strftime("%H:%M")
-    draw.text(((WIDTH-draw.textlength(time, font=font_20))/2, 80), time,  font=font_20, fill=COLOR_TEXT_NORMAL)
+    a, b, c, dy_date = draw.textbbox((0, 0), date, font=font, language="de-DE")
+    a, b, c, dy_time = draw.textbbox((0, 0), time, font=font_big, language="de-DE")
+    dy = dy_date + dy_time
+    y_date = HEIGHT/2 - dy/2 - dy_space/2
+    y_time = y_date + dy_date + dy_space/2
+    draw.text(((WIDTH-draw.textlength(date, font=font))/2, y_date), date,  font=font, fill=COLOR_TEXT_NORMAL)
+    draw.text(((WIDTH-draw.textlength(time, font=font_big))/2, y_time), time,  font=font_big, fill=COLOR_TEXT_NORMAL)
     disp.display(img)
 
-# ***********************************************************************************************
+# ******* ok ****************************************************************************************
 def tft_display_volume(): 
 
     txt = F"Volume: {config['volume']}"
     txt_font = font
    
     dx_space = 5
-    dy_space = 5
-    dy_bar = 10
+    dy_space = 6
+    dy_bar   = 12
     
     x = dx_space
-    y = dy_space + 50
+    
+    a, b, c, dy_txt = draw.textbbox((0, 0), txt, font=font, language="de-DE")
+    
+    
+    y = dy_space + (HEIGHT/2 - dy_txt/2 -6*dy_space/2) 
     
     # Fenster mit Label
     draw.rectangle((x, y, WIDTH-x, y + 6*dy_space), outline=COLOR_FRAME_WINDOW, fill=COLOR_BACKGROUND_WINDOW)
@@ -647,7 +736,7 @@ def tft_display_volume():
 
     disp.display(img)
     
-# ***********************************************************************************************
+# ************ ok ***********************************************************************************
 def tft_display_stations(): 
 
     label_font = font
@@ -655,7 +744,7 @@ def tft_display_stations():
     dx_space = 5
     dy_space = 22
     
-    max_str_len = 16
+    max_str_len = 26
 
     # Fenster mit Label
     draw.rectangle((dx_space, dy_space, WIDTH-dx_space, HEIGHT-dy_space), outline=COLOR_FRAME_WINDOW, fill=COLOR_BACKGROUND_WINDOW)
