@@ -43,7 +43,7 @@
 # TFT (ST7735, analog dockerpi...; 128x160)
 # -----------------------------------------
 # SCK   11 (CLK)
-# SDA   10 (MISO)
+# SDA   10 (MOSI)
 # RES   24
 # RS    23
 # CS    08 (CE0)
@@ -404,8 +404,9 @@ def load_webimage(url, dx, dy, logo_name, cache_path, default_logo):
             im_x = round(im_x * dy/im_y)
             im_y = dy
         im = im.resize((im_x, im_y), Image.LANCZOS)
-    # irgendetwas stimmt nicht mit den Farben!?!?! ...dehalb erstmal Graustufen...
-    return im.convert("L") # ??? --> https://pillow.readthedocs.io/en/stable/handbook/concepts.html#concept-modes
+    # irgendetwas stimmt nicht mit den Farben!?!?! ...deshalb erstmal Graustufen...
+    # ~ return im.convert("L") # ??? --> https://pillow.readthedocs.io/en/stable/handbook/concepts.html#concept-modes
+    return im.convert("RGB") # ...beim ILI9341-Display sieht es gut aus!
 
 # ***********************************************************************************************
 def time_ms():
@@ -567,6 +568,22 @@ def tft_setup():
     font_b = ImageFont.truetype(FONT_BOLD, size=14)
     font_big = ImageFont.truetype(FONT_NORMAL, size=40)
     font_big_b = ImageFont.truetype(FONT_BOLD, size=40)
+    
+# ***********************************************************************************************
+def tft_output_multiple_textlines(x, y, txt, txt_line_len, font, language, color):
+    a, b, c, dy = draw.textbbox((0, 0), "Abcg", font=font, language=language)
+    for line in textwrap.wrap(txt, txt_line_len):
+        draw.text((x, y), line, font=font, fill=color)
+        y = y + dy
+    return y
+
+# ***********************************************************************************************
+def tft_output_text_label(x, y, txt, font, language, color_txt, color_bg):
+    a, b, c, dy = draw.textbbox((0, 0), "Abcg", font=font, language=language)
+    draw.rectangle((draw.textbbox((x, y), txt, font=font, language=language)), outline=color_bg, fill=color_bg)
+    draw.text((x, y), txt,  font=font, fill=color_txt)            
+    y = y + dy
+    return y
 
 # ***********************************************************************************************
 def tft_display_main(): 
@@ -583,7 +600,7 @@ def tft_display_main():
 
     # Stationsname
     a, b, c, dy = draw.textbbox((0, 0), "Abcg", font=font_b, language="de-DE")
-    for line in textwrap.wrap(stations[config['station_idx']]['name'], 30):
+    for line in textwrap.wrap(stations[config['station_idx']]['name'], 25):
         draw.text(((WIDTH-draw.textlength(line, font=font_b))/2, y), line,  font=font_b, fill=COLOR_TEXT_NORMAL)
         y = y + dy
     y = y + 5
@@ -596,78 +613,42 @@ def tft_display_main():
         
     elif (temps["main_screen_idx"] == 1):
         # Media-Infos aus Stream
-        a, b, c, dy = draw.textbbox((0, 0), "Abcg", font=font, language="de-DE")
         y = y + 10
         try:
-            txt = "Meta.NowPlaying:"
-            draw.rectangle((draw.textbbox((0, y), txt, font=font, language="de-DE")), outline=COLOR_BACKGROUND_TOPIC, fill=COLOR_BACKGROUND_TOPIC)
-            draw.text((0, y), txt,  font=font, fill=COLOR_TEXT_TOPIC)            
-            y = y + dy
-            for line in textwrap.wrap(media.get_meta(Meta.NowPlaying), 30):
-                draw.text((0, y), line, font=font, fill=COLOR_TEXT_NORMAL)
-                y = y + dy
-            y = y + 10
+            y = tft_output_text_label(0, y, "Meta.NowPlaying:", font, "de_DE", COLOR_TEXT_TOPIC, COLOR_BACKGROUND_TOPIC)
+            y = tft_output_multiple_textlines(0, y, media.get_meta(Meta.NowPlaying), 30, font, "de-DE", COLOR_TEXT_NORMAL) + 10
         except:
             pass
         try:
-            txt = "Meta.Title:"
-            draw.rectangle((draw.textbbox((0, y), txt, font=font, language="de-DE")), outline=COLOR_BACKGROUND_TOPIC, fill=COLOR_BACKGROUND_TOPIC)
-            draw.text((0, y), txt,  font=font, fill=COLOR_TEXT_TOPIC)            
-            y = y + dy
-            for line in textwrap.wrap(media.get_meta(Meta.Title), 30):
-                draw.text((0, y), line, font=font, fill=COLOR_TEXT_NORMAL)
-                y = y + dy
-            y = y + 10
+            y = tft_output_text_label(0, y, "Meta.Title:", font, "de_DE", COLOR_TEXT_TOPIC, COLOR_BACKGROUND_TOPIC)
+            y = tft_output_multiple_textlines(0, y, media.get_meta(Meta.Title), 30, font, "de-DE", COLOR_TEXT_NORMAL) + 10
         except:
             pass
         try:
-            txt = "Meta.Genre:"
-            draw.rectangle((draw.textbbox((0, y), txt, font=font, language="de-DE")), outline=COLOR_BACKGROUND_TOPIC, fill=COLOR_BACKGROUND_TOPIC)
-            draw.text((0, y), txt,  font=font, fill=COLOR_TEXT_TOPIC)            
-            y = y + dy
-            for line in textwrap.wrap(media.get_meta(Meta.Genre), 30):
-                draw.text((0, y), line, font=font, fill=COLOR_TEXT_NORMAL)
-                y = y + dy
+            y = tft_output_text_label(0, y, "Meta.Genre:", font, "de_DE", COLOR_TEXT_TOPIC, COLOR_BACKGROUND_TOPIC)
+            y = tft_output_multiple_textlines(0, y, media.get_meta(Meta.Genre), 30, font, "de-DE", COLOR_TEXT_NORMAL) + 10
         except:
             pass
 
     elif (temps["main_screen_idx"] == 2):
         # Infos aus Stations-DB
-        a, b, c, dy = draw.textbbox((0, 0), "Abcg", font=font, language="de-DE")
         y = y + 10
         try:
             if len(stations[config['station_idx']]['country']) > 0:
-                txt = "DB.country:"
-                draw.rectangle((draw.textbbox((0, y), txt, font=font, language="de-DE")), outline=COLOR_BACKGROUND_TOPIC, fill=COLOR_BACKGROUND_TOPIC)
-                draw.text((0, y), txt,  font=font, fill=COLOR_TEXT_TOPIC)            
-                y = y + dy
-                draw.text((0, y), stations[config['station_idx']]['country'][0:20],  font=font, fill=COLOR_TEXT_NORMAL)
-                y = y + dy +10
+                y = tft_output_text_label(0, y, "DB.country:", font, "de_DE", COLOR_TEXT_TOPIC, COLOR_BACKGROUND_TOPIC)
+                y = tft_output_multiple_textlines(0, y, stations[config['station_idx']]['country'], 30, font, "de-DE", COLOR_TEXT_NORMAL) + 10
             if len(stations[config['station_idx']]['state']) > 0:
-                txt = "DB.state:"
-                draw.rectangle((draw.textbbox((0, y), txt, font=font, language="de-DE")), outline=COLOR_BACKGROUND_TOPIC, fill=COLOR_BACKGROUND_TOPIC)
-                draw.text((0, y), txt,  font=font, fill=COLOR_TEXT_TOPIC)            
-                y = y + dy
-                draw.text((0, y), stations[config['station_idx']]['state'][0:20],  font=font, fill=COLOR_TEXT_NORMAL)
-                y = y + dy + 10
+                y = tft_output_text_label(0, y, "DB.state:", font, "de_DE", COLOR_TEXT_TOPIC, COLOR_BACKGROUND_TOPIC)
+                y = tft_output_multiple_textlines(0, y, stations[config['station_idx']]['state'], 30, font, "de-DE", COLOR_TEXT_NORMAL) + 10
             if len(stations[config['station_idx']]['language']) > 0:
-                txt = "DB.language:"
-                draw.rectangle((draw.textbbox((0, y), txt, font=font, language="de-DE")), outline=COLOR_BACKGROUND_TOPIC, fill=COLOR_BACKGROUND_TOPIC)
-                draw.text((0, y), txt,  font=font, fill=COLOR_TEXT_TOPIC)            
-                y = y + dy
-                draw.text((0, y), stations[config['station_idx']]['language'][0:20],  font=font, fill=COLOR_TEXT_NORMAL)
-                y = y + dy + 10
+                y = tft_output_text_label(0, y, "DB.language:", font, "de_DE", COLOR_TEXT_TOPIC, COLOR_BACKGROUND_TOPIC)
+                y = tft_output_multiple_textlines(0, y, stations[config['station_idx']]['language'], 30, font, "de-DE", COLOR_TEXT_NORMAL) + 10
             if len(stations[config['station_idx']]['codec']) > 0:
-                txt = "DB.codec:"
-                draw.rectangle((draw.textbbox((0, y), txt, font=font, language="de-DE")), outline=COLOR_BACKGROUND_TOPIC, fill=COLOR_BACKGROUND_TOPIC)
-                draw.text((0, y), txt,  font=font, fill=COLOR_TEXT_TOPIC)            
-                y = y + dy
+                y = tft_output_text_label(0, y, "DB.codec:", font, "de_DE", COLOR_TEXT_TOPIC, COLOR_BACKGROUND_TOPIC)
                 draw.text((0, y), stations[config['station_idx']]['codec'],  font=font, fill=COLOR_TEXT_NORMAL)
-                y = y + dy + 10
-            txt = "DB.bitrate:"
-            draw.rectangle((draw.textbbox((0, y), txt, font=font, language="de-DE")), outline=COLOR_BACKGROUND_TOPIC, fill=COLOR_BACKGROUND_TOPIC)
-            draw.text((0, y), txt,  font=font, fill=COLOR_TEXT_TOPIC)            
-            y = y + dy
+                y = y + dy
+                y = y  + 10
+            y = tft_output_text_label(0, y, "DB.bitrate:", font, "de_DE", COLOR_TEXT_TOPIC, COLOR_BACKGROUND_TOPIC)
             draw.text((0, y), F"{stations[config['station_idx']]['bitrate']}Kb/s",  font=font, fill=COLOR_TEXT_NORMAL)
         except:
             draw.text((0, y), "no database...",  font=font, fill=COLOR_TEXT_NORMAL)
@@ -676,10 +657,7 @@ def tft_display_main():
         # dies und das
         a, b, c, dy = draw.textbbox((0, 0), "Abcg", font=font, language="de-DE")
         y = y + 10
-        txt = "technical stuff:"
-        draw.rectangle((draw.textbbox((0, y), txt, font=font, language="de-DE")), outline=COLOR_BACKGROUND_TOPIC, fill=COLOR_BACKGROUND_TOPIC)
-        draw.text((0, y), txt,  font=font, fill=COLOR_TEXT_TOPIC)            
-        y = y + dy
+        y = tft_output_text_label(0, y, "technical staff:", font, "de_DE", COLOR_TEXT_TOPIC, COLOR_BACKGROUND_TOPIC)
         draw.text((0, y), f"station_idx = {config['station_idx']}",  font=font, fill=COLOR_TEXT_NORMAL)
         y = y + dy
         draw.text((0, y), f"temp_st_idx = {temps['station_list_idx']}",  font=font, fill=COLOR_TEXT_NORMAL)
@@ -727,9 +705,7 @@ def tft_display_volume():
     
     # Fenster mit Label
     draw.rectangle((x, y, WIDTH-x, y + 6*dy_space), outline=COLOR_FRAME_WINDOW, fill=COLOR_BACKGROUND_WINDOW)
-
-    draw.rectangle((draw.textbbox((x+1, y-1), txt, font=txt_font, language="de-DE")), outline=COLOR_BACKGROUND_LABEL_WINDOW, fill=COLOR_BACKGROUND_LABEL_WINDOW)
-    draw.text((x+1, y-1), txt,  font=txt_font, fill=COLOR_TEXT_LABEL_WINDOW)
+    tft_output_text_label(x+1, y-1, txt, txt_font, "de_DE", COLOR_TEXT_LABEL_WINDOW, COLOR_BACKGROUND_LABEL_WINDOW)
     
     # ...auch hier sollte man noch kuerzen koennen!!!
     draw.rectangle((x+dx_space, y+3*dy_space, x+dx_space + ((WIDTH - (x+dx_space)) - (x+dx_space)) * config["volume"]/VOLUME_MAX, y+3*dy_space+dy_bar), outline=COLOR_VOLUME_BAR, fill=COLOR_VOLUME_BAR)
@@ -748,8 +724,7 @@ def tft_display_stations():
 
     # Fenster mit Label
     draw.rectangle((dx_space, dy_space, WIDTH-dx_space, HEIGHT-dy_space), outline=COLOR_FRAME_WINDOW, fill=COLOR_BACKGROUND_WINDOW)
-    draw.rectangle((draw.textbbox((dx_space+1, dy_space-1), "Stations:", font=label_font, language="de-DE")), outline=COLOR_BACKGROUND_LABEL_WINDOW, fill=COLOR_BACKGROUND_LABEL_WINDOW)
-    draw.text((dx_space+1, dy_space-1), "Stations:",  font=label_font, fill=COLOR_TEXT_LABEL_WINDOW)
+    tft_output_text_label(dx_space+1, dy_space-1, "Stations:", label_font, "de_DE", COLOR_TEXT_LABEL_WINDOW, COLOR_BACKGROUND_LABEL_WINDOW)
     
     # welcher Bereich der Liste soll angezeigt wrden?
     if (temps["station_list_idx"] < temps["station_list_top"]) :
@@ -852,7 +827,7 @@ while True :
         cycle_start("display_app_off", time_ms() + seconds_to_next_minute()*1000, True)
         continue
 
-    sleep(0.05)
+    sleep(0.04)
 
 # ~ except KeyboardInterrupt:
     # ~ settings_write()
